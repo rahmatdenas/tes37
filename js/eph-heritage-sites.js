@@ -457,8 +457,8 @@ function updateFeatureCounts(totalValidRecords) {
   let btnArt = document.getElementById('btn-article') || document.querySelector('[data-filter="article"]');
 
   if (btnAll) btnAll.textContent = 'Semua';
-  if (btnImg) btnImg.textContent = 'Ber-Gambar';
-  if (btnArt) btnArt.textContent = 'Ber-Artikel Wikipedia';
+  if (btnImg) btnImg.textContent = 'Memiliki Gambar';
+  if (btnArt) btnArt.textContent = 'Memiliki Artikel';
 
   let searchInput = document.getElementById('search-input');
   if (searchInput) {
