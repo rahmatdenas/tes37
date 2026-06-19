@@ -335,7 +335,8 @@ nav li a.active {
 #kontrib h4 {
 font-family: "Open Sans", sans-serif;
   font-size: 13px;
-    color: #882222;     font-weight: 600;
+    color: #882222;
+    font-style: oblique;
 }
 
 .grid-kontrib {
@@ -348,10 +349,10 @@ font-family: "Open Sans", sans-serif;
 .tombolkontrib {
   font-family: "Open Sans", sans-serif;
   font-size: 13.5px;
-    font-style: oblique;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 600;
   height: 100px;
   width: 100%;
   padding: 10px;
