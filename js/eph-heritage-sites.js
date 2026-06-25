@@ -125,11 +125,14 @@ function populateProvinceTypesData() {
   let baseQuery = KUMPULAN_KUERI_0[namaKueri];
   
   // 3. Suntikkan Dropdown Wilayah
-  let wilayahClause = '';
+let wilayahClause = '';
   if (provInput === 'all') {
     wilayahClause = '{ SELECT ?provinsi WHERE { ?provinsi wdt:P31 wd:Q5098 . } }';
   } else {
-wilayahClause = `{ SELECT ?provinsi WHERE { ?provinsi wdt:P131 ${provInput} . } }`;
+    // === TEKNIK JANGKAR GANDA ===
+    // Baris 1: Mencegah Timeout dengan membatasi area pencarian ?site
+    // Baris 2: Memaksa ?provinsi berisi daftar Kabupaten/Kota untuk Dropdown UI
+    wilayahClause = `?site wdt:P131+ ${provInput} . ?provinsi wdt:P131 ${provInput} .`;
   }
   
   // 4. Rakit kueri final
