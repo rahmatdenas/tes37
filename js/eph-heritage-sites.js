@@ -55,8 +55,7 @@ function loadPrimaryData() {
       enableApp(); 
       populateImageAndWikipediaData()
         .then(() => {
-          // === PERBAIKAN 1: HAPUS 'true' DI SINI ===
-          applyIntersectionFilter(); // Peta akan otomatis menyesuaikan posisi (zoom)
+          applyIntersectionFilter(); 
           Object.values(Records).forEach(r => r.panelElem = undefined);          
           processHashChange();
         })
@@ -64,8 +63,7 @@ function loadPrimaryData() {
           if (error === 'ABORTED') return;
           
           console.warn("Gagal mengambil data Gambar/Wikipedia dari server.", error);
-          // === PERBAIKAN 2: HAPUS 'true' DI SINI JUGA ===
-          applyIntersectionFilter(); // Tetap lakukan zoom meskipun gambar gagal dimuat                
+          applyIntersectionFilter();             
           Object.values(Records).forEach(r => r.panelElem = undefined);
           processHashChange();
         });
@@ -97,11 +95,9 @@ function doPreProcessing() {
   processHashChange();
 }
 
-// === LETAKKAN DI BAGIAN ATAS JS BERSAMA VARIABEL LAIN ===
 var currentKategoriUtama = 'general'; 
 
 function tentukanKategoriKueri(inputTxt) {
-  // 1. Ubah input jadi huruf besar agar kebal dari 'q' kecil
   let teks = inputTxt.toUpperCase(); 
 
   if (/\bQ5\b/.test(teks)) return 'tokoh';
@@ -110,12 +106,10 @@ function tentukanKategoriKueri(inputTxt) {
   if (teks.includes('Q7725634')) return 'fiksi'; 
   if (teks.includes('Q34770')) return 'bahasa';
   
-  // === PERUBAHAN DI SINI ===
-  // Kelompokkan semua yang memakai P2341 (Kuliner, Lukisan, Lontar)
+  // Kelompokkan semua yang memakai P2341/P276 (Kuliner, Lukisan, Lontar)
   const kelompokAsal = ['Q19861951', 'Q3305213', 'Q1641020', 'Q87167', 'Q133492', 'Q11460', 'Q107357104', 'Q189819', 'Q36192', 'Q7944'];
   let isMemakaiAsal = kelompokAsal.some(qid => teks.includes(qid));
   if (isMemakaiAsal) return 'kuliner'; 
-  // =========================
   
   if (teks.includes('Q11032') || teks.includes('Q41298')) return 'pers';
   
@@ -132,57 +126,58 @@ function populateProvinceTypesData() {
   let inputTxt = document.getElementById('jenis-input').value.trim();
   let provInput = document.getElementById('provinsi-input').value;
   
-  // 1. Tentukan kategori dan simpan di ingatan global
   currentKategoriUtama = tentukanKategoriKueri(inputTxt);
   
-  // 2. Ambil kueri dari Kamus. Jika 'alam', pinjam kueri 'general'
-  let namaKueri = (currentKategoriUtama === 'alam') ? 'general' : currentKategoriUtama;
+  // === MENGGUNAKAN TEMPLAT UNIVERSAL ===
+  let baseQuery = KUMPULAN_KUERI_0['universal'];
   
-  // Fallback pengaman: jika namaKueri belum ada di KUMPULAN_KUERI_0, pakai 'general'
-  let baseQuery = KUMPULAN_KUERI_0[namaKueri] || KUMPULAN_KUERI_0['general'];
+  const petaProperti = {
+    'general': 'P131',
+    'alam': 'P131',
+    'pers': 'P159',
+    'publikasi': 'P291',
+    'fiksi': 'P840',
+    'tokoh': 'P19',
+    'bahasa': 'P2341',
+    'kuliner': 'P276'
+  };
   
-  // 3. Suntikkan Dropdown Wilayah dengan Logika UNION
+  let propLokasi = petaProperti[currentKategoriUtama] || 'P131'; 
+  
   let wilayahClause1 = '';
   let unionEkstra = ''; 
+  let hierarkiLokasi = '?p131Lokasi wdt:P131* ?provinsi .'; 
   
+  // Pengecualian khusus untuk tokoh
+  if (currentKategoriUtama === 'tokoh') {
+    hierarkiLokasi = '?p131Lokasi wdt:P19* ?provinsi .';
+  }
+
   if (provInput === 'all') {
     wilayahClause1 = '?provinsi wdt:P31 wd:Q5098 .';
-    // Jika 'all', unionEkstra biarkan kosong
   } else {
     wilayahClause1 = `?provinsi wdt:P131 ${provInput}.`;
     let wilayahClause2 = `BIND(${provInput} AS ?provinsi) BIND(${provInput} AS ?p131Lokasi)`; 
     
-    // --- KAMUS PROPERTI LOKASI ---
-    // Di sinilah keajaibannya, cukup tambahkan di sini jika ada kategori baru
-    const petaProperti = {
-      'general': 'P131',
-      'pers': 'P159',
-      'publikasi': 'P291',
-      'fiksi': 'P840',
-      'tokoh': 'P19',
-      'bahasa': 'P2341',
-      'kuliner': 'P276'
-    };
-    
-    // Ambil P-ID sesuai namaKueri. Jika tidak ada di kamus, otomatis pakai default 'P131'
-    let propLokasi = petaProperti[namaKueri] || 'P131'; 
-    
-    // Rakit blok UNION dinamis menggunakan propLokasi yang sudah terpilih
-    unionEkstra = `
-    UNION {
-      ${wilayahClause2}
-      ?site wdt:P31 ?jenis ;
-            wdt:${propLokasi} ?p131Lokasi .
-    }`;
+    // Pengecualian UNION untuk tokoh
+    if (currentKategoriUtama !== 'tokoh') {
+      unionEkstra = `
+      UNION {
+        ${wilayahClause2}
+        ?site wdt:P31 ?jenis ;
+              wdt:${propLokasi} ?p131Lokasi .
+      }`;
+    }
   }
   
-  // 4. Rakit kueri final 
   let dynamicQuery = baseQuery
     .replace(/<PLACEHOLDER_WILAYAH_1>/g, wilayahClause1)
+    .replace(/<PLACEHOLDER_PROP_LOKASI>/g, propLokasi)
+    .replace(/<PLACEHOLDER_HIERARKI_LOKASI>/g, hierarkiLokasi)
     .replace(/<PLACEHOLDER_UNION_EKSTRA>/g, unionEkstra) 
     .replace(/<PLACEHOLDER_JENIS>/g, inputTxt);
 
-  console.log("Kueri yang dikirim ke Wikidata:", dynamicQuery); 
+  console.log("Kueri 0 (Tipe & Provinsi) yang dikirim:", dynamicQuery); 
 
   return queryWdqsThenProcess(
     dynamicQuery,
@@ -225,21 +220,40 @@ function populateCoordinatesData() {
   if (daftarQid.length === 0) return Promise.resolve();
 
   let inputTxt = document.getElementById('jenis-input').value.trim();
-  
-  // 1. Tentukan kategori
   let kategori = tentukanKategoriKueri(inputTxt);
   
-  // === OBAT PETA MATI: Pinjam kueri general jika ini entitas alam ===
-  let namaKueri = (kategori === 'alam') ? 'general' : kategori;
+  // === MENGGUNAKAN TEMPLAT UNIVERSAL UNTUK KOORDINAT ===
+  let templateKueri = KUMPULAN_KUERI_1['universal'];
+
+  const petaProperti = {
+    'general': 'P131',
+    'alam': 'P131',
+    'pers': 'P159',
+    'publikasi': 'P291',
+    'fiksi': 'P840',
+    'tokoh': 'P19',
+    'bahasa': 'P2341',
+    'kuliner': 'P276'
+  };
   
-  // 2. Ambil kueri koordinat dari Kamus
-  let templateKueri = KUMPULAN_KUERI_1[namaKueri];
+  let propLokasi = petaProperti[kategori] || 'P131'; 
+  let klausaKoordinat = '';
+
+  if (kategori === 'general' || kategori === 'alam') {
+    klausaKoordinat = `?site p:P625 ?coordStatement .`;
+  } else {
+    klausaKoordinat = `
+    ?site wdt:${propLokasi} ?p131Lokasi .
+    ?p131Lokasi p:P625 ?coordStatement .`;
+  }
 
   let kelompokCicilan = potongJadiKelompok(daftarQid, 1000);
 
   let daftarJanji = kelompokCicilan.map(cicilan => {
     let teksQids = cicilan.join(' ');
-    let kueriFinal = templateKueri.replace('<PLACEHOLDER_QIDS>', teksQids);
+    let kueriFinal = templateKueri
+      .replace(/<PLACEHOLDER_QIDS>/g, teksQids)
+      .replace(/<PLACEHOLDER_KLAUSA_KOORDINAT>/g, klausaKoordinat);
 
     return queryWdqsThenProcess(
       kueriFinal,
@@ -260,21 +274,17 @@ function populateCoordinatesData() {
 }
 
 function populateImageAndWikipediaData() {
-  // 1. Ambil semua kunci QID
   let daftarQid = Object.keys(Records).map(id => 'wd:' + id);
   if (daftarQid.length === 0) return Promise.resolve();
 
-  // 2. Belah array QID menjadi kelompok berisi maksimal 1000 data
   let kelompokCicilan = potongJadiKelompok(daftarQid, 1000);
 
-  // 3. Tembak kueri secara paralel
   let daftarJanji = kelompokCicilan.map(cicilan => {
     let teksQids = cicilan.join(' ');
     let kueriFinal = SPARQL_QUERY_3_TEMPLATE.replace('<PLACEHOLDER_QIDS>', teksQids);
 
     return queryWdqsThenProcess(
       kueriFinal,
-      // === INI ADALAH CALLBACK LAMA ANDA YANG DIMASUKKAN KE SINI ===
       function(result) {
         let record = Records[result.siteQid.value];      
         if (!record) return; 
@@ -291,7 +301,6 @@ function populateImageAndWikipediaData() {
     );
   });
 
-  // 4. Kembalikan janji agar JS tahu kapan semua gambar selesai ditarik
   return Promise.all(daftarJanji);
 }
 
@@ -497,12 +506,10 @@ function generateFilterSelect() {
   if (selectKombinasi) {
     selectKombinasi.value = 'default';
     
-    // === PINDAHKAN LOGIKA SEMBUNYI/MUNCUL KE SINI ===
-    // Di titik ini, aplikasi sudah 100% tahu ini entitas Alam atau Bangunan
-if (currentKategoriUtama === 'alam') {
+    if (currentKategoriUtama === 'alam') {
       selectKombinasi.style.display = 'none';
     } else {
-      selectKombinasi.style.display = ''; // Munculkan kembali
+      selectKombinasi.style.display = ''; 
     }
   }
 
@@ -517,11 +524,10 @@ if (currentKategoriUtama === 'alam') {
 
   selectRegion.innerHTML = `<option value="all">Semua Wilayah – ${ProvinceIndex['all'].total}</option>`;
   
-Object.keys(ProvinceIndex)
+  Object.keys(ProvinceIndex)
     .filter(qid => qid !== 'all')
     .map(qid => { return { qid: qid, name: ProvinceIndex[qid].name, total: ProvinceIndex[qid].total }; })
-.sort((a, b) => {
-      // Bersih dan langsung fokus ke teks yang baru
+    .sort((a, b) => {
       if (a.name === 'Tidak dalam Provinsi') return 1;
       if (b.name === 'Tidak dalam Provinsi') return -1;
       return a.name.localeCompare(b.name);
@@ -627,7 +633,6 @@ function updateFeatureCounts(totalValidRecords) {
 }
 
 function applyIntersectionFilter(preventZoom = false) {
-  // === PASANG GEMBOKNYA DI SINI SAYANGKU ===
   if (!PrimaryDataIsLoaded) return;
 
   Cluster.clearLayers();
@@ -701,17 +706,12 @@ function applyIntersectionFilter(preventZoom = false) {
     return a.indexTitle.localeCompare(b.indexTitle);    
   });
 
-currentFilteredRecords = validRecords;
+  currentFilteredRecords = validRecords;
   currentRenderIndex = 0; 
 
-  // 1. Gambar daftar list-nya dulu (Muncul Instan)
   renderNextChunk();
-  
-  // 2. Update jumlah hasil di kolom pencarian
   updateFeatureCounts(validRecords.length);
 
-  // 3. Masukkan pekerjaan berat (Peta) ke "jalur lambat" (Jeda 10ms)
-  // agar browser sempat memunculkan daftar ke layar pengguna
   setTimeout(() => {
     validRecords.forEach(record => {
       if (record.mapMarker) validMarkers.push(record.mapMarker);
@@ -768,8 +768,7 @@ function generateRecordDetails(qid) {
   let wikiUrlUtama = `https://www.wikidata.org/wiki/${qid}`;
   let tautanSuntingRingkasan = `<a href="${wikiUrlUtama}" target="_blank" class="sunting-link" title="Sunting data di Wikidata" aria-label="Sunting data di Wikidata"></a>`;
 
-// === PERBAIKAN: LOGIKA JUDUL YANG LEBIH RAPI DAN BERSIH ===
-let teksJudul = 'Informasi';
+  let teksJudul = 'Informasi';
   if (currentKategoriUtama === 'alam') {
     teksJudul = 'Informasi Geografis';
   } else if (currentKategoriUtama === 'pers' || currentKategoriUtama === 'publikasi') {
@@ -781,7 +780,6 @@ let teksJudul = 'Informasi';
   } else if (currentKategoriUtama === 'bahasa') {
     teksJudul = 'Informasi Bahasa';
   } else if (currentKategoriUtama === 'kuliner') {
-// === TAMBAHKAN PENGECEKAN INI AGAR JUDULNYA PAS ===
     let inputAsli = document.getElementById('jenis-input').value;
     if (inputAsli.includes('Q93184')) {
       teksJudul = 'Informasi Lukisan';
@@ -790,7 +788,6 @@ let teksJudul = 'Informasi';
     } else {
       teksJudul = 'Informasi Kuliner';
     }
-    // =================================================
   } else {
     let isBersejarah = false;
     if (record.rawTahunBerdiri) {
@@ -803,14 +800,12 @@ let teksJudul = 'Informasi';
   let designationsHtml = `<h2 style="margin-top:10px">${teksJudul} ${tautanSuntingRingkasan}</h2>`;
   designationsHtml += '<ul class="designations">';
 
-  // 1. Gabungkan semua provinsi menjadi satu teks
   let arrayProvinsi = Object.values(record.designations).filter(p => p !== 'Tidak dalam Provinsi');
   if (arrayProvinsi.length === 0) {
     arrayProvinsi.push('Indonesia');
   }
   let teksDaftarProvinsi = arrayProvinsi.join(', '); 
 
-  // 2. Siapkan Info Lokasi
   let spesifik = record.lokasiSpesifik; 
   if (spesifik === 'Tidak dalam Provinsi') spesifik = null;
 
@@ -820,7 +815,6 @@ let teksJudul = 'Informasi';
   }
 
   let infoLokasiHtml = '';
-  // Sesuaikan Prefix berdasarkan kategori agar bahasanya natural
   let prefixLokasi = 'Terletak di:';
   if (currentKategoriUtama === 'tokoh') prefixLokasi = 'Terkait dengan:';
   else if (currentKategoriUtama === 'bahasa') prefixLokasi = 'Digunakan di:';
@@ -835,7 +829,6 @@ let teksJudul = 'Informasi';
       `<p>Koordinat: <span style="font-style: italic; color: #888;">Data belum tersedia</span></p>`;
   }
 
-  // 3. Siapkan Info Tahun Didirikan / Lahir / Diterbitkan
   let infoTahunHtml = '';
   if (currentKategoriUtama !== 'alam') {
     let labelTahun = 'Didirikan';
@@ -852,13 +845,11 @@ let teksJudul = 'Informasi';
     }
   }
 
-  // 4. Siapkan Wadah Events (Hanya dibuat 1 kali)
   let eventsHtmlPlaceholder = `
     <div id="events-container-${qid}" class="loading" style="margin-top: 8px; min-height: 24px;">
       <div class="loader" style="width: 20px; height: 20px; border-width: 2px; margin: 0;"></div>
     </div>`;
 
-  // 5. Rakit semua info ke dalam SATU baris <li> saja
   designationsHtml +=
     '<li>' +
       infoLokasiHtml + 
@@ -894,7 +885,7 @@ function populateHistoricalImagesData(qid) {
   record.vicinityImages = [];
   record.pastImage = undefined;
   record.interiorImage = undefined; 
-  record.commonsCat = undefined; // <-- Siapkan wadahnya di sini
+  record.commonsCat = undefined; 
 
   return queryWdqsThenProcess(
     queryStr,
@@ -925,7 +916,6 @@ function populateHistoricalImagesData(qid) {
         }
       }
       
-      // === TANGKAP COMMONS CAT ===
       if ('commonsCat' in result) {
         record.commonsCat = result.commonsCat.value;
       }
@@ -945,7 +935,6 @@ function renderHistoricalImagesInPanel(qid) {
 
   let html = '';
   
-  // Fungsi pembuat blok gambar beserta teks penggantinya
   function buildImageBlock(imgObj, teksPengganti) {
     let block = '<div class="arsip-block" style="overflow: hidden; margin-bottom: 10px;">';
     block += generateFigure(imgObj.file);
@@ -958,24 +947,20 @@ function renderHistoricalImagesInPanel(qid) {
     return block;
   }
 
-  // Render Pemandangan Masa Lalu
   if (record.pastImage) {
     html += buildImageBlock(record.pastImage, 'Suasana/bentuk/tampilan sebelumnya');
   }
 
-  // Render Pemandangan Dalam
   if (record.interiorImage) {
     html += buildImageBlock(record.interiorImage, 'Pemandangan di dalam');
   }
   
-  // Render Pemandangan Sekitar
   if (record.vicinityImages && record.vicinityImages.length > 0) {
     record.vicinityImages.forEach(imgObj => {
       html += buildImageBlock(imgObj, 'Objek di sekitar');
     });
   }
 
-  // === RENDER TAUTAN WIKIMEDIA COMMONS ===
   if (record.commonsCat) {
     html += '<h2 style="margin-bottom:10px;">Galeri lainnya</h2>';
     html += 
@@ -987,13 +972,11 @@ function renderHistoricalImagesInPanel(qid) {
       '</p>';
   }
 
-  // === PERAKITAN AKHIR (Cetak Judul Utama) ===
   if (html !== '') {
     let wikiUrlGaleri = `https://www.wikidata.org/wiki/${qid}#P18`;
     let tautanSuntingGaleri = `<a href="${wikiUrlGaleri}" target="_blank" class="sunting-link" title="Sunting data galeri di Wikidata" aria-label="Sunting data galeri di Wikidata"></a>`;
     
     let judulGaleriUtama = '';
-    // Hanya cetak judul "Galeri" utama jika ada foto yang berhasil ditarik
     if (record.pastImage || record.interiorImage || (record.vicinityImages && record.vicinityImages.length > 0)) {
       judulGaleriUtama = `<h2 style="margin-bottom:15px;">Galeri ${tautanSuntingGaleri}</h2>`;
     }
@@ -1019,32 +1002,20 @@ function displayArticleExtract(title, elem) {
       titles    : title,
     },
     function(data) {
-      // 1. Ambil ekstrak mentah
       let rawExtract = Object.values(data.query.pages)[0].extract;
       
-      // 2. Cari semua tag <p>, dan pilih yang lebih dari 50 karakter (Logika lama yang sudah bagus)
       let kumpulanParagraf = rawExtract.match(/<p[^>]*>[\s\S]+?<\/p>/g);
       let paragrafPilihan = kumpulanParagraf ? kumpulanParagraf.find(text => text.length > 50) : null;
 
-if (paragrafPilihan) {
-        // 1. Cukur habis spasi/br/enter yang menempel persis setelah <p> pembuka
-        paragrafPilihan = paragrafPilihan.replace(/^<p[^>]*>(\s|<br\s*\/?>|&nbsp;)*/i, '<p>');
-        
-        // 2. PENYAPU ERROR WIKIPEDIA (Diperbarui untuk kasus "code: jv is deprecated")
-        // Membidik dan menghapus <span>...code: [apapun] is deprecated...</span>
+      if (paragrafPilihan) {
+        paragrafPilihan = paragrafPilihan.replace(/^<p[^>]*>(\s|<br\s*\/?>| )*/i, '<p>');
         paragrafPilihan = paragrafPilihan.replace(/<span[^>]*>[^<]*code:\s*[a-z\-]+\s*is deprecated[^<]*<\/span>/gi, '');
-        
-        // Membidik sisa error umum lainnya (Lua error, Script error, dll) di dalam tag apapun
         paragrafPilihan = paragrafPilihan.replace(/<[^>]*>[^<]*(is deprecated|Lua error|Script error)[^<]*<\/[^>]*>/gi, '');
-        
-        // (Opsional) Jika teks errornya bocor keluar dari <span>, hapus teks mentahnya
         paragrafPilihan = paragrafPilihan.replace(/code:\s*[a-z\-]+\s*is deprecated/gi, '');
       } else {
-        // Sabuk pengaman jika artikelnya terlalu pendek atau formatnya aneh
         paragrafPilihan = '<p>Ringkasan artikel belum memadai.</p>'; 
       }
 
-      // 4. Rakit dan cetak ke layar
       elem.innerHTML =
         paragrafPilihan +
         '<p class="wikipedia-link">' +
